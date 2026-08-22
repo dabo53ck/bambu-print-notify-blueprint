@@ -1,247 +1,183 @@
-# Bambu Printer Notification Blueprint for Home Assistant
+# Bambu Printer Notification Blueprint — Fork
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/printforge)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.6%2B-blue?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-A powerful Home Assistant blueprint that sends mobile notifications with camera snapshots when your Bambu printer finishes or encounters a fault. Packed with features for the ultimate 3D printing notification experience.
+A Home Assistant blueprint that sends a mobile notification with a camera snapshot when your Bambu printer finishes or faults.
 
-![Notification Example](https://via.placeholder.com/400x200?text=Print+Complete+Notification)
+This is a fork of [HallyAus/homeassistant-bambu-blueprints](https://github.com/HallyAus/homeassistant-bambu-blueprints), reworked around one central finding: **progress percentage is the wrong trigger for the snapshot.** See [Why this fork exists](#why-this-fork-exists).
 
----
+![Print complete notification with snapshot](docs/notification-example.png)
 
-## ✨ Features
-
-| Feature | Description |
-|---------|-------------|
-| 📸 **Smart Snapshots** | Captures a photo at ~99% progress before the bed drops |
-| 💡 **Snapshot Lighting** | Optionally turn on a light before capture for better photos |
-| 📱 **Mobile Notifications** | Rich notifications with images to iOS/Android |
-| 🔊 **TTS Announcements** | Voice announcements on your smart speakers |
-| 🚨 **Critical Alerts** | Optional critical notifications that bypass Do Not Disturb |
-| ⚡ **Custom Actions** | Run any automation on success or fault |
-| 🌙 **Quiet Hours** | Suppress TTS during sleeping hours |
-| ⏱️ **Cooldown** | Prevent notification spam |
-| 🔔 **Persistent Alerts** | Fault notifications stay until acknowledged |
+> **Not upstream-compatible.** Several inputs were removed. If you are migrating from the original blueprint, read [Migrating from upstream](#migrating-from-upstream) first.
 
 ---
 
-## 📋 Requirements
+## Why this fork exists
+
+The original blueprint takes its snapshot when print progress crosses a configurable threshold (default 99%). On a Bambu P1S that does not work reliably, for two measured reasons:
+
+**1. Progress skips values.** Recorded sensor history from a real print:
+
+| Time | Sensor | Value |
+| ---- | ------ | ----- |
+| 19:47:54.282 | current stage | `printing` → `idle` |
+| 19:47:54.289 | progress | 96 → **97 %** |
+| 19:48:35.750 | progress | 97 → **100 %** |
+| 19:48:35.759 | print status | `running` → `finish` |
+
+Progress jumped straight from 97 % to 100 %. A threshold of 98 % or 99 % was never crossed as a distinct value — it only fired on the jump to 100 %, at which point the print was already over.
+
+**2. The plate is already moving by then.** Between the stage change (19:47:54) and the progress/status update (19:48:35) lies a **41-second window** in which the P1S lowers the build plate. A snapshot taken at the later timestamp shows a plate on its way down, not the finished print.
+
+The stage sensor leaves `printing` at the *start* of that window and is a discrete state change that cannot be skipped. This fork triggers on that instead.
+
+Setting the threshold to 100 % appears to fix things in the original, but only by accident: `numeric_state` with `above: 100` can never fire, so the progress trigger is silently dead and the notification arrives via the `finish` backup trigger instead.
+
+---
+
+## Changes from upstream
+
+### Trigger logic
+
+- **New primary trigger** — fires when the stage sensor leaves `printing`, `inspecting_first_layer` or `auto_bed_leveling`. Guarded with `not_to: [unavailable, unknown]` so an MQTT dropout mid-print is not mistaken for the end of a print.
+- **Progress trigger demoted to a fallback**, hardcoded to `above: 99`. It only matters if the stage sensor is unavailable or another printer model behaves differently. The configurable threshold input is gone.
+- **`startup` / `automation_reloaded` triggers removed.** They fired, evaluated every condition, and were then immediately cancelled by the first action. Pure overhead — and they consumed the limited automation trace slots, which makes debugging harder.
+
+### Correctness fixes
+
+- **`wait_for_trigger` guard reworked** (upstream [issue #7](https://github.com/HallyAus/homeassistant-bambu-blueprints/issues/7)). The step is now entered only while print status is still `running`. Upstream, and also [PR #8](https://github.com/HallyAus/homeassistant-bambu-blueprints/pull/8), check for `finish`/`failed` instead — but `finish` is often a short-lived intermediate state that has already passed to `idle` by the time the check runs, so the automation waited out the full 10-minute timeout.
+- **`mode: single` instead of `queued`.** All triggers point at the same snapshot filename and the same notification tag. Under `queued`, the late triggers overwrote the correctly-timed snapshot roughly 400 ms after the notification was sent, and replaced the notification on the phone. They are now discarded while a run is in flight (`max_exceeded: silent`).
+- **Values re-read after the wait.** `progress`, `status` and `print_weight` are read fresh once the print has actually ended. Otherwise the notification reported the value from trigger time — with the earlier stage trigger that would read `97 %` instead of `100 %`.
+- **Notification body no longer indented.** The old block scalar carried its YAML indentation into the message, so every line after the first was prefixed with two spaces on the phone.
+- **Critical time window semantics corrected.** Identical start and end time now means *never critical*, which is what the upstream v2 release notes describe. The code did the opposite (all-day critical). Success window defaults changed from `00:00–00:00` to `07:00–21:00` to match the fault block.
+
+### Removals
+
+- **TTS announcements removed entirely.** The `tts.speak` branch could not work — it passed the *service name* as the target entity, where `tts.speak` requires an actual TTS entity. Failures were swallowed by `continue_on_error: true`. Removing it also drops eight `strptime` calls that ran on every single trigger for the quiet-hours check, even with TTS disabled. Use the custom success/fault actions if you want announcements.
+- **Cooldown condition and input removed.** It never blocked anything in practice, and `mode: single` covers the burst case it was meant to handle.
+- **Unused top-level variables removed** (`status`, `print_weight` — both recomputed after the wait anyway).
+- **`paused` dropped from the stage guard list** — the Bambu stage sensor reports `paused_nozzle_clog`, `paused_user` and similar, never a bare `paused`.
+
+### Diagnostics
+
+- `trace: stored_traces: 20` — the default of 5 was routinely exhausted by a single print's triggers.
+
+---
+
+## Requirements
 
 - Home Assistant **2024.6.0** or newer
-- [Bambu Lab integration](https://github.com/greghesp/ha-bambulab) installed and configured
+- [Bambu Lab integration](https://github.com/greghesp/ha-bambulab)
 - A camera entity for your printer
-- (Optional) Mobile app for push notifications
-- (Optional) Media player for TTS announcements
+- `/config/www/snapshots/` must exist and be writable
+- Mobile app for push notifications (optional)
 
 ---
 
-## 🚀 Installation
+## Installation
 
-### Method 1: Manual Installation
+### Manual
 
-1. Download `bambu_printer_notify_v4.yaml`
-2. Copy to your Home Assistant config:
-   ```
-   /config/blueprints/automation/custom/bambu_printer_notify_v4.yaml
-   ```
-3. Restart Home Assistant or reload automations
+1. Copy `blueprints/automation/dabo53ck/bambu_print_notify.yaml` to
+   `/config/blueprints/automation/<folder>/bambu_print_notify.yaml`
+2. **Settings → Automations & Scenes → Blueprints → Reload**
 
-### Method 2: Import via URL
+### Import via URL
 
-1. Go to **Settings** → **Automations & Scenes** → **Blueprints**
-2. Click **Import Blueprint**
-3. Paste the raw GitHub URL - https://raw.githubusercontent.com/HallyAus/homeassistant-bambu-blueprints/refs/heads/main/blueprints/automation/danielhall/bambu_print_notify.yaml
-4. Click **Preview** then **Import**
+1. **Settings → Automations & Scenes → Blueprints → Import Blueprint**
+2. Paste the raw URL of this fork:
+   `https://raw.githubusercontent.com/dabo53ck/bambu-print-notify-blueprint/refs/heads/main/blueprints/automation/dabo53ck/bambu_print_notify.yaml`
+3. **Preview** → **Import**
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-### Required Inputs
+### Printer sensors (required)
 
-| Input | Description |
-|-------|-------------|
-| **Print status sensor** | Sensor with states: `running`, `finish`, `failed` |
-| **Print error binary sensor** | Binary sensor that turns ON on error |
-| **Current stage sensor** | Enum sensor for printer stage |
-| **Progress sensor** | Print progress percentage |
-| **Printer name sensor** | Your printer's name |
-| **Task name sensor** | Current print job name |
-| **Print weight sensor** | Print weight in grams |
-| **Camera** | Your printer's camera entity |
-| **Notifications enabled** | input_boolean to enable/disable |
+| Input | Bambu Lab entity |
+| ----- | ---------------- |
+| Print status sensor | states `running`, `finish`, `failed` |
+| Print error binary sensor | turns ON on error |
+| **Current stage sensor** | **drives the primary trigger — must be mapped** |
+| Progress sensor | print progress in % |
+| Printer name sensor | used for filename and notification tag |
+| Task name sensor | current job name |
+| Print weight sensor | weight in grams |
+| Camera | your printer's camera |
+| Notifications enabled | `input_boolean` acting as a master switch |
 
-### Snapshot Settings
+### Snapshot settings
 
 | Input | Default | Description |
-|-------|---------|-------------|
-| **Snapshot light** | *none* | Light to turn on before capture |
-| **Light brightness** | 100% | Brightness for snapshot light |
-| **Snapshot delay** | 1 sec | Delay for light warmup / camera adjustment |
+| ----- | ------- | ----------- |
+| Snapshot light | *none* | Light switched on before capture, restored afterwards |
+| Light brightness | 100 % | Brightness used for the capture |
+| Snapshot delay | 1 s | Delay for light warmup / camera exposure. **Every second here eats into the plate-lowering window** — keep it at 0–1 s on a P1S |
 
-### TTS Settings
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| **Enable TTS** | Off | Enable voice announcements |
-| **TTS service** | `tts.speak` | Your TTS service (google, cloud, piper, etc.) |
-| **Media player** | *none* | Speaker(s) for announcements |
-| **Volume** | 0 (current) | Announcement volume (1-100%) |
-| **Success message** | *"{{printer_name}} has finished printing {{task_name}}"* | Customizable template |
-| **Fault message** | *"Warning! {{printer_name}} has encountered a fault..."* | Customizable template |
-| **Quiet hours** | Off | Suppress TTS during specified times |
-
-### Notification Settings
+### Notification settings
 
 | Input | Default | Description |
-|-------|---------|-------------|
-| **Notify device** | *empty* | Your `mobile_app_*` service name |
-| **Success type** | Normal | Normal, Critical, or Never Critical |
-| **Fault type** | Critical | Normal, Critical, or Never Critical |
-| **Critical sound** | default | iOS sound name |
-| **Critical volume** | 1.0 | Alert volume (0.0-1.0) |
+| ----- | ------- | ----------- |
+| Notify device | *empty* | Your `mobile_app_*` service name, without the `notify.` prefix |
+| Success type | Normal | Normal / Critical / Never critical |
+| Fault type | Critical | Normal / Critical / Never critical |
+| Success window | 07:00–21:00 | Only when type is Critical |
+| Fault window | 07:00–21:00 | Only when type is Critical |
+| Critical sound | default | iOS sound name |
+| Critical volume | 1.0 | 0.0–1.0 |
 
-### Custom Actions
+Identical start and end time = **never critical**. For critical around the clock use `00:00:00`–`23:59:59`.
 
-You can run **any** Home Assistant actions on print success or fault:
+### Custom actions
 
-**Success action examples:**
-- Turn on a green "print done" light
-- Power on a cooling fan via smart plug
-- Send a message to Discord/Slack
-- Turn off the printer after a delay
-
-**Fault action examples:**
-- Turn on a red warning light
-- Flash lights to get attention
-- Pause other printers in your farm
-- Send urgent alerts to multiple services
+Any Home Assistant actions, run on success or on fault — indicator lights, smart plugs, scripts, extra notification services, pausing other printers.
 
 ---
 
-## 📝 Template Variables
+## Migrating from upstream
 
-Use these in your TTS messages:
+The following inputs no longer exist. Home Assistant may refuse to load an automation that still references them.
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `{{ printer_name }}` | Printer name | "X1 Carbon" |
-| `{{ task_name }}` | Print job name | "benchy.3mf" |
-| `{{ print_weight }}` | Weight in grams | "15" |
-| `{{ progress }}` | Progress percentage | "100" |
-| `{{ status }}` | Current status | "finish" |
+- `progress_trigger_threshold`
+- `cooldown_minutes`
+- `tts_enable`, `tts_service`, `tts_media_player`, `tts_volume`,
+  `tts_success_message`, `tts_fault_message`,
+  `tts_quiet_hours_enable`, `tts_quiet_hours_start`, `tts_quiet_hours_end`
 
----
+Open the automation, choose **⋮ → Edit in YAML**, and delete those lines from the `input:` block.
 
-## 💡 Tips & Tricks
-
-### Capture Better Snapshots
-
-1. Set **progress threshold** to 98-99% to capture before the bed drops
-2. Add a **snapshot light** for consistent lighting
-3. Use a **1-2 second delay** to let the camera adjust
-
-### Critical Notifications
-
-- Set time windows to only get critical alerts during certain hours
-- Set **start and end to the same time** to completely disable critical alerts
-- Use "Never Critical" option to always get normal notifications
-
-### Quiet Hours for TTS
-
-Perfect for overnight prints:
-- TTS quiet hours: 22:00 → 07:00
-- You'll still get mobile notifications, just no voice announcements
-
-### Multiple Printers
-
-Create a separate automation from this blueprint for each printer. Use different:
-- Notification tags (automatic based on printer name)
-- Snapshot lights
-- TTS messages
+Also make sure **Current stage sensor** is mapped — it was optional in practice before, and is now the primary trigger.
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### "Source not found" when importing
+**Snapshot still shows the plate lowering.**
+Check the trace: **Automation → ⋮ → Traces**. The triggering entity should be your *stage* sensor, and the `camera.snapshot` step should be within a few dozen milliseconds of the trigger timestamp. If the trigger is the progress sensor instead, your stage sensor is probably not mapped or was unavailable.
 
-This happens when trying to reimport from a URL. Instead:
-1. Download the YAML file manually
-2. Place it in `/config/blueprints/automation/custom/`
-3. Restart Home Assistant
+**Notification arrives minutes late.**
+Look for a `wait_for_trigger` step that ran to its 10-minute timeout. That means print status never reached `finish`/`failed` while the automation was waiting.
 
-### Snapshots not saving
+**Two notifications per print.**
+Should not happen under `mode: single`. If it does, check whether the second run shows `execution: failed_single` — that is the expected, discarded run, not a second notification.
 
-1. Ensure `/config/www/snapshots/` directory exists
-2. Check Home Assistant has write permissions
-3. Verify your camera entity is working
-
-### TTS not working
-
-1. Verify your TTS service name is correct
-2. Test your media player with Developer Tools → Services
-3. Check you're not in quiet hours
-
-### Notifications not arriving
-
-1. Verify `notify.mobile_app_*` service exists
-2. Check the notifications enabled boolean is ON
-3. Review cooldown settings
+**Snapshots not saving.**
+`/config/www/snapshots/` must exist. `camera.snapshot` runs with `continue_on_error: true`, so a missing directory produces a notification with a broken image rather than a visible error.
 
 ---
 
-## 📜 Changelog
+## Credits
 
-### v4
-- ✨ Added TTS announcements with customizable messages
-- ✨ Added TTS quiet hours
-- ✨ Support for multiple TTS services
+Original blueprint by [@HallyAus](https://github.com/HallyAus) — [upstream repository](https://github.com/HallyAus/homeassistant-bambu-blueprints). Released under CC0, so attribution is not legally required; it is given here because the work deserves it. If you find it useful, [buy them a coffee](https://buymeacoffee.com/hallyaus).
 
-### v3
-- ✨ Added custom actions on success/fault
-- 🎨 Organized inputs into collapsible sections
-
-### v2
-- ✨ Added optional snapshot light with brightness control
-- 🐛 Fixed critical notifications (now truly optional)
-- 🐛 Fixed snapshot delay (positive values only)
-- 🐛 Fixed time window handling (00:00-00:00 = disabled)
-
-### v1
-- 🎉 Initial release
+The `wait_for_trigger` timeout problem was independently addressed upstream in [PR #8](https://github.com/HallyAus/homeassistant-bambu-blueprints/pull/8) by [@frederikkuehn](https://github.com/frederikkuehn); this fork uses a different guard condition for the reasons described above.
 
 ---
 
-## 🤝 Contributing
+## License
 
-Found a bug? Have a feature request? Feel free to:
-1. Open an issue
-2. Submit a pull request
-3. Share your custom configurations
+MIT — see [LICENSE](LICENSE).
 
----
-## Contributors
-
-- [@sawokei](https://github.com/sawokei) - Bug reports and testing
-
----
-
-## ☕ Support
-
-If this blueprint has helped you, consider buying me a coffee!
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/printforge)
-
-Your support helps me create more useful Home Assistant blueprints and integrations.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-Made with ❤️ for the Home Assistant and 3D printing community
+Upstream is released under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/), a public domain dedication. CC0 permits relicensing, so this fork is distributed under MIT. Note that the upstream README displays an MIT badge while its `LICENSE` file contains CC0 — the `LICENSE` file is the operative one.
