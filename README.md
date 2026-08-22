@@ -7,7 +7,7 @@ A Home Assistant blueprint that sends a mobile notification with a camera snapsh
 
 This is a fork of [HallyAus/homeassistant-bambu-blueprints](https://github.com/HallyAus/homeassistant-bambu-blueprints), reworked around one central finding: **progress percentage is the wrong trigger for the snapshot.** See [Why this fork exists](#why-this-fork-exists).
 
-![Print complete notification with snapshot](docs/notification-example.png)
+<img src="example.png" alt="Beschreibung" width="300">
 
 > **Not upstream-compatible.** Several inputs were removed. If you are migrating from the original blueprint, read [Migrating from upstream](#migrating-from-upstream) first.
 
