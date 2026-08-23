@@ -3,11 +3,13 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.6%2B-blue?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fdabo53ck%2Fbambu-print-notify-blueprint%2Frefs%2Fheads%2Fmain%2Fblueprints%2Fautomation%2Fdabo53ck%2Fbambu_print_notify.yaml)
+
 A Home Assistant blueprint that sends a mobile notification with a camera snapshot when your Bambu printer finishes or faults.
 
 This is a fork of [HallyAus/homeassistant-bambu-blueprints](https://github.com/HallyAus/homeassistant-bambu-blueprints), reworked around one central finding: **progress percentage is the wrong trigger for the snapshot.** See [Why this fork exists](#why-this-fork-exists).
 
-<img src="example.png" alt="Beschreibung" width="300">
+<img src="example.png" alt="Print complete notification with snapshot" width="300">
 
 > **Not upstream-compatible.** Several inputs were removed. If you are migrating from the original blueprint, read [Migrating from upstream](#migrating-from-upstream) first.
 
@@ -70,12 +72,30 @@ Setting the threshold to 100 % appears to fix things in the original, but only b
 - Home Assistant **2024.6.0** or newer
 - [Bambu Lab integration](https://github.com/greghesp/ha-bambulab)
 - A camera entity for your printer
-- `/config/www/snapshots/` must exist and be writable
+- A snapshot folder under `/config/www/` — see [Configuration](#configuration), this is the first thing to set up
 - Mobile app for push notifications (optional)
 
 ---
 
 ## Installation
+
+### One-click import
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fdabo53ck%2Fbambu-print-notify-blueprint%2Frefs%2Fheads%2Fmain%2Fblueprints%2Fautomation%2Fdabo53ck%2Fbambu_print_notify.yaml)
+
+Requires the [My Home Assistant](https://my.home-assistant.io/) redirect service,
+which is enabled by default. The link opens the import dialog in your own
+instance with the blueprint URL pre-filled — confirm with **Preview** → **Import**.
+
+### Import via URL
+
+If the button does not work (My Home Assistant disabled, or a non-standard
+setup), import manually:
+
+1. **Settings → Automations & Scenes → Blueprints → Import Blueprint**
+2. Paste this URL:
+   `https://raw.githubusercontent.com/dabo53ck/bambu-print-notify-blueprint/refs/heads/main/blueprints/automation/dabo53ck/bambu_print_notify.yaml`
+3. **Preview** → **Import**
 
 ### Manual
 
@@ -83,16 +103,45 @@ Setting the threshold to 100 % appears to fix things in the original, but only b
    `/config/blueprints/automation/<folder>/bambu_print_notify.yaml`
 2. **Settings → Automations & Scenes → Blueprints → Reload**
 
-### Import via URL
-
-1. **Settings → Automations & Scenes → Blueprints → Import Blueprint**
-2. Paste the raw URL of this fork:
-   `https://raw.githubusercontent.com/dabo53ck/bambu-print-notify-blueprint/refs/heads/main/blueprints/automation/dabo53ck/bambu_print_notify.yaml`
-3. **Preview** → **Import**
-
 ---
 
 ## Configuration
+
+### 0. Snapshot folder (do this first)
+
+The blueprint writes the snapshot to a fixed path and links to it from a
+fixed URL:
+
+```
+File written by camera.snapshot:  /config/www/snapshots/bambu_<printer_name>.jpg
+URL used in the notification:     /local/snapshots/bambu_<printer_name>.jpg
+```
+
+`<printer_name>` comes from your printer name sensor, lowercased with spaces
+replaced by underscores — e.g. `3DP-P1S` becomes `bambu_3dp-p1s.jpg`. Home
+Assistant serves everything under `/config/www/` at the public path `/local/`,
+which is why the two paths above differ but point at the same file.
+
+**Home Assistant does not create this folder for you.** If it is missing, the
+`camera.snapshot` action fails silently — the blueprint runs it with
+`continue_on_error: true` so a missing folder does not stop the automation,
+it just means the notification arrives with a broken image link instead of a
+photo. There is no error in the log to point you at the cause, which makes
+this easy to misdiagnose later — better to create it now.
+
+Create the folder once, before doing anything else below:
+
+- **File editor / Studio Code Server add-on:** navigate to `/config/www/`,
+  create a new folder named `snapshots`.
+- **Samba / SMB share:** connect to `\\<your-ha-ip>\config\www\`
+  from Windows, create a `snapshots` folder there.
+- **SSH / Terminal add-on:**
+  ```bash
+  mkdir -p /config/www/snapshots
+  ```
+
+No further permissions setup is needed — Home Assistant already has full
+access to everything under `/config/`.
 
 ### Printer sensors (required)
 
@@ -164,7 +213,7 @@ Look for a `wait_for_trigger` step that ran to its 10-minute timeout. That means
 Should not happen under `mode: single`. If it does, check whether the second run shows `execution: failed_single` — that is the expected, discarded run, not a second notification.
 
 **Snapshots not saving.**
-`/config/www/snapshots/` must exist. `camera.snapshot` runs with `continue_on_error: true`, so a missing directory produces a notification with a broken image rather than a visible error.
+See [Snapshot folder](#0-snapshot-folder-do-this-first) above — `/config/www/snapshots/` must exist. `camera.snapshot` runs with `continue_on_error: true`, so a missing directory produces a notification with a broken image link rather than a visible error in the log.
 
 ---
 
