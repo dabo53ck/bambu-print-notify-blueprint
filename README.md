@@ -3,7 +3,7 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.6%2B-blue?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fdabo53ck%2Fbambu-print-notify-blueprint%2Frefs%2Fheads%2Fmain%2Fblueprints%2Fautomation%2Fdabo53ck%2Fbambu_print_notify.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fdabo53ck%2Fbambu-print-notify-blueprint%2Frefs%2Fheads%2Fmain%2Fbambu_print_notify.yaml)
 
 A Home Assistant blueprint that sends a mobile notification with a camera snapshot when your Bambu printer finishes or faults.
 
@@ -81,7 +81,7 @@ Setting the threshold to 100 % appears to fix things in the original, but only b
 
 ### One-click import
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fdabo53ck%2Fbambu-print-notify-blueprint%2Frefs%2Fheads%2Fmain%2Fblueprints%2Fautomation%2Fdabo53ck%2Fbambu_print_notify.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fdabo53ck%2Fbambu-print-notify-blueprint%2Frefs%2Fheads%2Fmain%2Fbambu_print_notify.yaml)
 
 Requires the [My Home Assistant](https://my.home-assistant.io/) redirect service,
 which is enabled by default. The link opens the import dialog in your own
@@ -94,12 +94,12 @@ setup), import manually:
 
 1. **Settings → Automations & Scenes → Blueprints → Import Blueprint**
 2. Paste this URL:
-   `https://raw.githubusercontent.com/dabo53ck/bambu-print-notify-blueprint/refs/heads/main/blueprints/automation/dabo53ck/bambu_print_notify.yaml`
+   `https://raw.githubusercontent.com/dabo53ck/bambu-print-notify-blueprint/refs/heads/main/bambu_print_notify.yaml`
 3. **Preview** → **Import**
 
 ### Manual
 
-1. Copy `blueprints/automation/dabo53ck/bambu_print_notify.yaml` to
+1. Copy `bambu_print_notify.yaml` to
    `/config/blueprints/automation/<folder>/bambu_print_notify.yaml`
 2. **Settings → Automations & Scenes → Blueprints → Reload**
 
