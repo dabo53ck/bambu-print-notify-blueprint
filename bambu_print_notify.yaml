@@ -167,6 +167,19 @@ blueprint:
           default: ""
           selector:
             text:
+        time_format:
+          name: Time format
+          description: >
+            Clock format for the timestamp shown in the notification message
+            (both success and fault). Seconds are always included.
+          default: "24h"
+          selector:
+            select:
+              options:
+                - label: "24h (14:05:09)"
+                  value: "24h"
+                - label: "12h AM/PM (02:05:09 PM)"
+                  value: "12h"
 
     # ══════════════════════════════════════════════════════════════════════════
     # SUCCESS NOTIFICATION SETTINGS
@@ -400,6 +413,7 @@ variables:
   
   # Notification settings
   notify_device: !input notify_device
+  time_format: !input time_format
   success_notification_type: !input success_notification_type
   success_critical_start: !input success_critical_start
   success_critical_end: !input success_critical_end
@@ -654,14 +668,19 @@ action:
       notification_title: >-
         {{ printer_name }} {{ 'FAULT' if is_fault else 'Print Complete' }}
 
+      # Time the print actually ended (computed here, after the wait, so it
+      # matches the re-read progress/status values above). Seconds are always
+      # shown. time_format picks 24h ("%H:%M:%S") or 12h AM/PM ("%I:%M:%S %p").
+      notification_time: "{{ now().strftime('%I:%M:%S %p') if time_format == '12h' else now().strftime('%H:%M:%S') }}"
+
       # Explicit \n instead of indented Jinja lines: the previous >-block
       # carried its YAML indentation into the message, so every line after
       # the first was prefixed with two spaces on the device.
       notification_message: >-
         {% if is_fault -%}
-        ❌ Print Failed{{ "\n" }}File: {{ task_name or 'Unknown' }}{{ "\n" }}Progress: {{ progress }}%{{ "\n" }}Status: {{ status }}
+        ❌ Print Failed{{ "\n" }}File: {{ task_name or 'Unknown' }}{{ "\n" }}Progress: {{ progress }}%{{ "\n" }}Status: {{ status }}{{ "\n" }}Time: {{ notification_time }}
         {%- else -%}
-        ✅ Print Successful{{ "\n" }}File: {{ task_name or 'Unknown' }}{{ "\n" }}Weight: {{ print_weight }}g{{ "\n" }}Progress: {{ progress }}%
+        ✅ Print Successful{{ "\n" }}File: {{ task_name or 'Unknown' }}{{ "\n" }}Weight: {{ print_weight }}g{{ "\n" }}Progress: {{ progress }}%{{ "\n" }}Time: {{ notification_time }}
         {%- endif %}
 
   # ════════════════════════════════════════════════════════════════════════════

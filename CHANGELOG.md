@@ -6,6 +6,20 @@ Versions up to and including v4.1 are inherited from
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`time_format` input** (Notification Settings, default `24h`). The
+  notification message now carries the print end time on both the success and
+  the fault path. The input selects between `24h` (`14:05:09`) and `12h` AM/PM
+  (`02:05:09 PM`); seconds are always shown. The time is rendered with
+  `now().strftime(...)` in the post-wait `variables:` block, so it lines up
+  with the re-read `progress` / `status` values rather than trigger time.
+  Existing automations pick the input up on re-import without any change.
+
+---
+
 ## [v5-fork] — first release of this fork
 
 Reworked around the finding that print progress is an unreliable trigger for

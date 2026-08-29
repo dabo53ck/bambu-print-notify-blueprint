@@ -170,6 +170,7 @@ access to everything under `/config/`.
 | Input | Default | Description |
 | ----- | ------- | ----------- |
 | Notify device | *empty* | Your `mobile_app_*` service name, without the `notify.` prefix |
+| Time format | 24h | Clock format for the timestamp in the message — `24h` (`14:05:09`) or `12h` AM/PM (`02:05:09 PM`). Seconds are always shown |
 | Success type | Normal | Normal / Critical / Never critical |
 | Fault type | Critical | Normal / Critical / Never critical |
 | Success window | 07:00–21:00 | Only when type is Critical |
