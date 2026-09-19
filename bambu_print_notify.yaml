@@ -1,6 +1,16 @@
 blueprint:
   name: Bambu printer – finish / fault notify with snapshot (v5-fork)
   description: >
+    **This blueprint has moved and is no longer updated.** It keeps working
+    unchanged, but fixes and new features go into
+    [Bambu Printer Notifications](https://github.com/dabo53ck/bambu-printer-notifications-blueprint).
+    See the
+    [migration guide](https://github.com/dabo53ck/bambu-printer-notifications-blueprint/blob/main/docs/migration.md).
+
+
+    ---
+
+
     Sends a Home Assistant mobile notification with a camera snapshot when a
     Bambu printer finishes or faults.
 

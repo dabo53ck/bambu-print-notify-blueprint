@@ -6,6 +6,15 @@ Versions up to and including v4.1 are inherited from
 
 ---
 
+## Archived
+
+This project moved to
+[dabo53ck/bambu-printer-notifications-blueprint](https://github.com/dabo53ck/bambu-printer-notifications-blueprint).
+No further changes are made here. The changelog there continues from
+`0.0.1-beta`.
+
+---
+
 ## [Unreleased]
 
 ### Added
